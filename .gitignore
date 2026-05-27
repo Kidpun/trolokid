@@ -1,0 +1,16 @@
+# Сессии
+session/
+*.session
+*.session-journal
+
+# Окружение
+.env
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.idea/
+.vscode/
+*.swp
