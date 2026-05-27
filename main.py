@@ -21,7 +21,7 @@ BANNER = """
 TEXT_FILE = "text.txt"
 SESSION_DIR = "session"
 SESSION_NAME = "telegram_account"
-MESSAGE_DELAY = 0
+MESSAGE_DELAY = 0.5  # задержка между сообщениями (сек), 0 = без задержки (риск FloodWait бана)
 
 trolled = False
 
@@ -93,6 +93,7 @@ async def spam_messages(client, chat_entity, words):
     
     CHUNK_SIZE = 5000
     total_words = len(words)
+    sent_count = 0
     
     try:
         for chunk_start in range(0, total_words, CHUNK_SIZE):
@@ -102,17 +103,26 @@ async def spam_messages(client, chat_entity, words):
             for word in chunk:
                 try:
                     await client.send_message(chat_entity, word)
+                    sent_count += 1
+                    if sent_count % 50 == 0:
+                        print(f"📨 Отправлено {sent_count}/{total_words} слов...")
+                    if MESSAGE_DELAY > 0:
+                        await asyncio.sleep(MESSAGE_DELAY)
                 except (asyncio.CancelledError, KeyboardInterrupt):
                     raise
                 except FloodWaitError as e:
-                    await asyncio.sleep(e.seconds)
+                    print(f"⏳ FloodWait: ожидание {e.seconds} сек...")
+                    await asyncio.sleep(e.seconds + 1)
                     try:
                         await client.send_message(chat_entity, word)
-                    except:
+                        sent_count += 1
+                    except Exception:
                         continue
-                except Exception:
+                except Exception as e:
+                    print(f"⚠️ Ошибка отправки слова '{word}': {e}")
                     continue
     except (asyncio.CancelledError, KeyboardInterrupt):
+        print(f"\n⚠️ Остановлено. Отправлено {sent_count}/{total_words} слов.")
         raise
 
 async def main():
@@ -183,7 +193,8 @@ async def main():
             return
         
         me = await client.get_me()
-        print(f"\n✓ Подключен как: {me.first_name} (@{me.username})")
+        username_str = f"@{me.username}" if me.username else "без username"
+        print(f"\n✓ Подключен как: {me.first_name} ({username_str})")
         print(f"✓ Сессия сохранена в: {session_file}")
         print(f"✓ При следующем запуске сессия будет использована автоматически")
         print(f"✓ Чтобы сменить аккаунт, удалите файл: {session_file}")
@@ -206,15 +217,20 @@ async def main():
             chat_input_clean = chat_input.lstrip('@')
             
             try:
-                chat_id = int(chat_input_clean)
-                chat_entity = await client.get_entity(chat_id)
+                chat_id_num = int(chat_input_clean)
+                chat_entity = await client.get_entity(chat_id_num)
             except (ValueError, TypeError):
                 chat_entity = await client.get_entity(chat_input_clean)
             
-            chat_info = await client.get_entity(chat_entity)
-            chat_name = getattr(chat_info, 'first_name', None) or getattr(chat_info, 'title', None) or getattr(chat_info, 'username', None) or "Неизвестно"
-            chat_id = getattr(chat_info, 'id', 'Unknown')
-            print(f"✓ Найден чат: {chat_name} (ID: {chat_id})")
+            # chat_entity уже содержит все данные, повторный get_entity не нужен
+            chat_name = (
+                getattr(chat_entity, 'first_name', None)
+                or getattr(chat_entity, 'title', None)
+                or getattr(chat_entity, 'username', None)
+                or "Неизвестно"
+            )
+            chat_id_found = getattr(chat_entity, 'id', 'Unknown')
+            print(f"✓ Найден чат: {chat_name} (ID: {chat_id_found})")
             
             trolled = True
             
@@ -229,7 +245,9 @@ async def main():
     except (asyncio.CancelledError, KeyboardInterrupt):
         pass
     except Exception as e:
-        pass
+        print(f"\n❌ Неожиданная ошибка: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         try:
             await client.disconnect()
